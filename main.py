@@ -1,13 +1,19 @@
-from fastapi import FastAPI, HTTPException, Path
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from uuid import uuid4
 from typing import List, Dict
+import webbrowser
+import uvicorn
 
 app = FastAPI(title= "Calculateur RPN")
 
-piles = dict()
+piles: Dict[str, List[int]] = {}
 
 operateurs = {"+","-"
               "*","/"}
+
+class Valeur(BaseModel):
+    value: int
 
 @app.get("/rpn/op", summary="Liste des opérateurs")
 def lister_piles():
@@ -24,34 +30,69 @@ def recuperer_toutes_les_piles():
     return {"piles": list(piles.keys())}
 
 @app.get("/rpn/stack/{pile_id}", summary="Voir une pile")
-def recuperer_une_piles():
-    pass
+def recuperer_une_pile(pile_id: str ):
+    if pile_id not in piles:
+        raise HTTPException(status_code=404, detail="Pile introuvable")
+    return {"pile": piles[pile_id]}
 
 @app.delete("/rpn/stack/{pile_id}", summary="Vider une pile")
-def nettoyer_une_pile():
-    pass
+def nettoyer_une_pile(pile_id: str):
+        if pile_id not in piles:
+            raise HTTPException(status_code=404, detail="Pile introuvable")
+        piles[pile_id] = []
+        return {"message": "Pile vidée", "pile": piles[pile_id]}
 
 @app.post("/rpn/stack/{pile_id}", summary="Ajouter une valeur à la pile")
-def ajouter_element_dans_pile():
-    pass
+def ajouter_element_dans_pile(pile_id: str, val: Valeur):
+            if pile_id not in piles:
+                raise HTTPException(status_code=404, detail="Pile introuvable")
+            piles[pile_id].append(val.value)
+            return {"pile": piles[pile_id]}
 
 
 @app.post("/rpn/op/{operateur}/stack/{pile_id}", summary="Appliquer un opérateur")
-def appliquer_operateur():
-    pass
+def appliquer_operateur(op: str, pile_id: str):    
+        if op not in operateurs:
+            raise HTTPException(status_code=400, detail="Opérateur invalide")
+        if pile_id not in piles:
+            raise HTTPException(status_code=404, detail="Pile introuvable")
+        pile = piles[pile_id]
 
 
+        if len(pile) < 2:
+            raise HTTPException(status_code=400, detail="Pas assez d'opérandes")
+        
+        b = pile.pop()
+        a = pile.pop()
+
+        try:
+            match op:
+                case "+":
+                    res = a + b
+                case "-":
+                    res = a - b
+                case "*":
+                    res = a * b
+                case "/":
+                    res = a / b
+                case _:
+                    raise HTTPException(status_code=400, detail="Opérateur inconnu")
+
+            pile.append(res)
+            return {"pile": pile}
+        except ZeroDivisionError:
+            
+            pile += [a, b]
+            raise HTTPException(status_code=400, detail="Division par zéro")
+        
 
 
-
-
-
-
-
-
-
+def lancer_swagger():
+    import threading
+    threading.Timer(1.0, lambda: webbrowser.open("http://127.0.0.1:8000/docs")).start()
 
 
 
 if __name__ == "__main__":
-    pass
+    lancer_swagger()
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
